@@ -1,7 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.3/schema.json",
   "assist": {
-    "enabled": true
+    "enabled": true,
+    "actions": {
+      "recommended": true
+    }
   },
   "vcs": {
     "enabled": true,
@@ -48,6 +51,20 @@
       },
       "suspicious": {
         "recommended": true
+      },
+      "nursery": {
+        "useSortedClasses": {
+          "level": "warn",
+          "options": {
+            "functions": [
+              "clsx",
+              "cn",
+              "cva",
+              "tw",
+              "tw.*"
+            ]
+          }
+        }
       }
     }
   },
