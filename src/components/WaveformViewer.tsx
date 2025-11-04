@@ -418,6 +418,75 @@ export function WaveformViewer() {
     }
   };
 
+  // Keyboard shortcut for spacebar to control play/pause
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input field
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement ||
+        (event.target as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      // Spacebar pressed
+      if (event.code === 'Space' || event.key === ' ') {
+        event.preventDefault();
+        if (!audioData || !audioBufferRef.current) return;
+
+        if (!audioContextRef.current) {
+          await initializeAudio(audioData.audioBuffer);
+        }
+
+        const audioContext = audioContextRef.current;
+        if (!audioContext || !audioBufferRef.current) return;
+
+        if (isPlaying) {
+          // Pause and reset to start position
+          if (sourceNodeRef.current) {
+            sourceNodeRef.current.stop();
+            sourceNodeRef.current = null;
+          }
+          setIsPlaying(false);
+          setCurrentTime(startPosition);
+          pausedAtRef.current = startPosition;
+          drawWaveform();
+        } else {
+          // Play from start position (reset and play)
+          const source = audioContext.createBufferSource();
+          source.buffer = audioBufferRef.current;
+          source.connect(audioContext.destination);
+
+          const startOffset = Math.max(0, startPosition);
+          const remainingDuration = audioData.duration - startOffset;
+          
+          if (remainingDuration > 0) {
+            source.start(0, startOffset);
+            startTimeRef.current = audioContext.currentTime;
+            pausedAtRef.current = startPosition;
+            
+            sourceNodeRef.current = source;
+
+            source.onended = () => {
+              setIsPlaying(false);
+              setCurrentTime(audioData.duration);
+              pausedAtRef.current = audioData.duration;
+              sourceNodeRef.current = null;
+            };
+
+            setIsPlaying(true);
+            setCurrentTime(startPosition);
+            drawWaveform();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [audioData, isPlaying, startPosition, drawWaveform]);
+
   const getTimeFromX = useCallback((clientX: number): number => {
     if (!audioData || !canvasRef.current) return 0;
     const canvas = canvasRef.current;
