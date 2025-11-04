@@ -29,8 +29,10 @@ export function WaveformViewer() {
       dispatch({ type: 'TIME_UPDATE', payload: { time } });
     },
     onEnded: () => {
+      // Only update time if we're actually playing (not already paused)
+      // The pause() function already updates the time when pausing
       dispatch({ type: 'PAUSE' });
-      if (state.audioData) {
+      if (state.audioData && state.isPlaying) {
         dispatch({ type: 'TIME_UPDATE', payload: { time: state.audioData.duration } });
       }
     },

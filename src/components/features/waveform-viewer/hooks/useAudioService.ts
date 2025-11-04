@@ -166,9 +166,14 @@ export function useAudioService(
           cancelAnimationFrame(animationFrameRef.current);
           animationFrameRef.current = null;
         }
-        callbacks.onEnded();
-        pausedAtRef.current = audioData.duration;
         sourceNodeRef.current = null;
+        // Only call onEnded if we're still playing (not manually paused)
+        // This handles the case where audio reaches the end naturally
+        if (isPlayingRef.current && !isDraggingRef.current) {
+          pausedAtRef.current = audioData.duration;
+          callbacks.onEnded();
+        }
+        // If we're already paused, don't update pausedAtRef - keep the current paused position
       };
     } else {
       console.warn('Cannot play: remaining duration is 0 or negative');
@@ -179,7 +184,15 @@ export function useAudioService(
     if (sourceNodeRef.current && audioContextRef.current) {
       const audioContext = audioContextRef.current;
       const sessionElapsed = audioContext.currentTime - startTimeRef.current;
-      pausedAtRef.current = pausedAtRef.current + sessionElapsed;
+      const newPausedTime = pausedAtRef.current + sessionElapsed;
+      pausedAtRef.current = newPausedTime;
+      
+      // Update the current time to the paused position before stopping
+      if (currentAudioDataRef.current) {
+        const finalTime = Math.min(newPausedTime, currentAudioDataRef.current.duration);
+        callbacks.onTimeUpdate(finalTime);
+      }
+      
       sourceNodeRef.current.stop();
       sourceNodeRef.current = null;
     }
@@ -188,7 +201,7 @@ export function useAudioService(
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-  }, []);
+  }, [callbacks]);
 
   const seek = useCallback((time: number) => {
     pausedAtRef.current = time;
