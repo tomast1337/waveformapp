@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Play, Pause } from 'lucide-react';
+import { Play, Pause, Copy } from 'lucide-react';
 
 interface AudioData {
   samples: Float32Array;
@@ -926,9 +926,31 @@ export function WaveformViewer() {
       {(tags.length > 0 || pendingTagStart !== null) && (
         <div className="shrink-0 border-t border-border bg-card p-4 max-h-64 overflow-y-auto">
           <div className="container mx-auto">
-            <h3 className="text-sm font-semibold text-card-foreground mb-3">
-              Tags {pendingTagStart !== null && <span className="text-muted-foreground text-xs">(Press A again to set end)</span>}
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-card-foreground">
+                Tags {pendingTagStart !== null && <span className="text-muted-foreground text-xs">(Press A again to set end)</span>}
+              </h3>
+              {tags.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const json = JSON.stringify(tags, null, 2);
+                      await navigator.clipboard.writeText(json);
+                      // You could add a toast notification here if you have one
+                    } catch (error) {
+                      console.error('Failed to copy:', error);
+                      alert('Failed to copy to clipboard');
+                    }
+                  }}
+                  className="gap-2"
+                >
+                  <Copy className="size-4" />
+                  Copy JSON
+                </Button>
+              )}
+            </div>
             <div className="space-y-2">
               {tags.map((tag, index) => (
                 <div
