@@ -930,26 +930,31 @@ export function WaveformViewer() {
               <h3 className="text-sm font-semibold text-card-foreground">
                 Tags {pendingTagStart !== null && <span className="text-muted-foreground text-xs">(Press A again to set end)</span>}
               </h3>
-              {tags.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      const json = JSON.stringify(tags, null, 2);
-                      await navigator.clipboard.writeText(json);
-                      // You could add a toast notification here if you have one
-                    } catch (error) {
-                      console.error('Failed to copy:', error);
-                      alert('Failed to copy to clipboard');
-                    }
-                  }}
-                  className="gap-2"
-                >
-                  <Copy className="size-4" />
-                  Copy JSON
-                </Button>
-              )}
+                             {tags.length > 0 && (
+                 <Button
+                   variant="outline"
+                   size="sm"
+                   onClick={async () => {
+                     try {
+                       // Format each value to 4 decimal places
+                       const formattedTags = tags.map(([start, end]) => [
+                         Math.round(start * 10000) / 10000,
+                         Math.round(end * 10000) / 10000
+                       ]);
+                       const json = JSON.stringify(formattedTags, null, 2);
+                       await navigator.clipboard.writeText(json);
+                       // You could add a toast notification here if you have one
+                     } catch (error) {
+                       console.error('Failed to copy:', error);
+                       alert('Failed to copy to clipboard');
+                     }
+                   }}
+                   className="gap-2"
+                 >
+                   <Copy className="size-4" />
+                   Copy JSON
+                 </Button>
+               )}
             </div>
             <div className="space-y-2">
               {tags.map((tag, index) => (
