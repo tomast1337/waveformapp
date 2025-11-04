@@ -25,7 +25,6 @@ export function WaveformViewer() {
   // Audio service hook - use useMemo to stabilize callbacks
   const audioCallbacks = useMemo(() => ({
     onTimeUpdate: (time: number) => {
-      console.log('onTimeUpdate called with time:', time);
       dispatch({ type: 'TIME_UPDATE', payload: { time } });
     },
     onEnded: () => {
@@ -49,14 +48,11 @@ export function WaveformViewer() {
   const drawWaveform = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !state.audioData) {
-      console.log('drawWaveform skipped:', { hasCanvas: !!canvas, hasAudioData: !!state.audioData });
       return;
     }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
-    console.log('drawWaveform called with currentTime:', state.currentTime);
 
     // Get CSS variables for colors
     const root = document.documentElement;
@@ -149,7 +145,6 @@ export function WaveformViewer() {
     // Draw playhead (current playback position) - make it thicker for easier dragging
     if (duration > 0 && state.currentTime !== undefined) {
       const playheadX = Math.max(0, Math.min((state.currentTime / duration) * displayWidth, displayWidth));
-      console.log('Drawing playhead at X:', playheadX, 'currentTime:', state.currentTime, 'duration:', duration, 'displayWidth:', displayWidth);
       ctx.strokeStyle = cssColorToRgb(destructiveColor);
       ctx.lineWidth = state.isDragging ? 3 : 2;
       ctx.beginPath();
@@ -162,8 +157,6 @@ export function WaveformViewer() {
       ctx.beginPath();
       ctx.arc(playheadX, 8, 6, 0, Math.PI * 2);
       ctx.fill();
-    } else {
-      console.log('Playhead not drawn:', { duration, currentTime: state.currentTime });
     }
 
     // Draw start position marker (if set) with chart color
@@ -183,36 +176,27 @@ export function WaveformViewer() {
   // Redraw waveform when currentTime changes (for playhead movement)
   useEffect(() => {
     if (!state.audioData) return;
-    console.log('currentTime changed, redrawing waveform. currentTime:', state.currentTime);
-    // Directly call drawWaveform - it already uses state.currentTime from closure
-    // which will be updated by the time this effect runs
     drawWaveform();
   }, [state.currentTime, state.audioData, drawWaveform]);
 
   // Effect to handle play/pause state changes
   useEffect(() => {
-    console.log('Play/pause effect triggered:', { isPlaying: state.isPlaying, isDragging: state.isDragging, hasAudioData: !!state.audioData });
     if (!state.audioData) return;
 
     // Only auto-play/pause when not dragging (manual dragging handles its own playback)
     if (state.isPlaying && !state.isDragging) {
-      console.log('Initializing and playing audio...');
       // Initialize audio if needed, then play
       audioService.initialize(state.audioData.audioBuffer)
         .then(() => {
-          console.log('Audio initialized, calling play()');
           // Only play if still in playing state (state might have changed during async init)
           if (state.isPlaying && !state.isDragging) {
             audioService.play(state.audioData!, state.startPosition);
-          } else {
-            console.log('State changed during initialization, not playing');
           }
         })
         .catch((error) => {
           console.error('Failed to initialize audio:', error);
         });
     } else if (!state.isPlaying) {
-      console.log('Pausing audio');
       audioService.pause();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
