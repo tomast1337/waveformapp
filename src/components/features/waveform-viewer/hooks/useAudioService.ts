@@ -59,8 +59,67 @@ export function useAudioService(
     }
   }, []);
 
+  const startPlayheadUpdate = useCallback(() => {
+    // Cancel any existing animation frame
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
+    if (!isPlayingRef.current || isDraggingRef.current || !audioContextRef.current || !currentAudioDataRef.current || !sourceNodeRef.current) {
+      console.log('Cannot start playhead update:', { isPlaying: isPlayingRef.current, isDragging: isDraggingRef.current, hasContext: !!audioContextRef.current, hasAudioData: !!currentAudioDataRef.current, hasSource: !!sourceNodeRef.current });
+      return;
+    }
+
+    console.log('Starting playhead update loop from play()');
+    
+    const updatePlayhead = () => {
+      // Check conditions using refs (which are always up-to-date)
+      if (!isPlayingRef.current || isDraggingRef.current || !audioContextRef.current || !currentAudioDataRef.current || !sourceNodeRef.current) {
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        return;
+      }
+
+      const audioContext = audioContextRef.current;
+      const sessionElapsed = audioContext.currentTime - startTimeRef.current;
+      const totalTime = pausedAtRef.current + sessionElapsed;
+      const newTime = Math.min(totalTime, currentAudioDataRef.current.duration);
+      
+      console.log('Playhead update:', { 
+        audioContextTime: audioContext.currentTime, 
+        startTime: startTimeRef.current, 
+        sessionElapsed, 
+        pausedAt: pausedAtRef.current, 
+        totalTime, 
+        newTime,
+        duration: currentAudioDataRef.current.duration 
+      });
+      
+      callbacks.onTimeUpdate(newTime);
+      
+      if (newTime < currentAudioDataRef.current.duration) {
+        animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+      } else {
+        // Reached end
+        animationFrameRef.current = null;
+        callbacks.onEnded();
+      }
+    };
+
+    // Start the animation loop
+    animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+  }, [callbacks]);
+
   const play = useCallback((audioData: AudioData, startTime: number) => {
-    if (!audioContextRef.current || !audioBufferRef.current) return;
+    if (!audioContextRef.current || !audioBufferRef.current) {
+      console.error('Cannot play: audio context or buffer not initialized');
+      return;
+    }
+
+    console.log('play() called with startTime:', startTime, 'duration:', audioData.duration);
 
     // Stop any existing playback first
     if (sourceNodeRef.current) {
@@ -72,6 +131,12 @@ export function useAudioService(
       sourceNodeRef.current = null;
     }
 
+    // Cancel any existing playhead update
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+
     const audioContext = audioContextRef.current;
     const source = audioContext.createBufferSource();
     source.buffer = audioBufferRef.current;
@@ -81,20 +146,34 @@ export function useAudioService(
     const remainingDuration = audioData.duration - startOffset;
     
     if (remainingDuration > 0) {
+      // Set refs BEFORE starting playback
+      currentAudioDataRef.current = audioData;
+      pausedAtRef.current = startTime;
+      
       source.start(0, startOffset);
       startTimeRef.current = audioContext.currentTime;
-      pausedAtRef.current = startTime;
-      currentAudioDataRef.current = audioData;
       
       sourceNodeRef.current = source;
 
+      console.log('Audio started:', { startTime: startTimeRef.current, pausedAt: pausedAtRef.current, startOffset });
+
+      // Start the playhead update loop now that everything is ready
+      startPlayheadUpdate();
+
       source.onended = () => {
+        console.log('Audio ended');
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
         callbacks.onEnded();
         pausedAtRef.current = audioData.duration;
         sourceNodeRef.current = null;
       };
+    } else {
+      console.warn('Cannot play: remaining duration is 0 or negative');
     }
-  }, [callbacks]);
+  }, [callbacks, startPlayheadUpdate]);
 
   const pause = useCallback(() => {
     if (sourceNodeRef.current && audioContextRef.current) {
@@ -137,52 +216,16 @@ export function useAudioService(
     isDraggingRef.current = isDragging;
   }, [isPlaying, isDragging]);
 
-  // Update playhead position (only when playing and not dragging)
+  // Stop playhead update when pausing or dragging
   useEffect(() => {
-    // Cancel any existing animation frame
-    if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-
-    if (!isPlaying || isDragging || !audioContextRef.current || !currentAudioDataRef.current) {
-      return;
-    }
-
-    const updatePlayhead = () => {
-      // Check conditions using refs (which are always up-to-date)
-      if (!isPlayingRef.current || isDraggingRef.current || !audioContextRef.current || !currentAudioDataRef.current || !sourceNodeRef.current) {
-        if (animationFrameRef.current !== null) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-        return;
-      }
-
-      const sessionElapsed = audioContextRef.current.currentTime - startTimeRef.current;
-      const totalTime = pausedAtRef.current + sessionElapsed;
-      const newTime = Math.min(totalTime, currentAudioDataRef.current.duration);
-      callbacks.onTimeUpdate(newTime);
-      
-      if (newTime < currentAudioDataRef.current.duration) {
-        animationFrameRef.current = requestAnimationFrame(updatePlayhead);
-      } else {
-        // Reached end
-        animationFrameRef.current = null;
-        callbacks.onEnded();
-      }
-    };
-
-    // Start the animation loop
-    animationFrameRef.current = requestAnimationFrame(updatePlayhead);
-
-    return () => {
+    if (!isPlaying || isDragging) {
       if (animationFrameRef.current !== null) {
+        console.log('Stopping playhead update (pause/drag)');
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-    };
-  }, [isPlaying, isDragging, callbacks]);
+    }
+  }, [isPlaying, isDragging]);
 
   // Cleanup on unmount
   useEffect(() => {

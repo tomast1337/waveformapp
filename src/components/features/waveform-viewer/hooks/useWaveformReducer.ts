@@ -87,6 +87,7 @@ export function waveformReducer(state: WaveformState, action: WaveformAction): W
       return { ...state, isDragging: false };
 
     case 'TIME_UPDATE':
+      console.log('TIME_UPDATE action dispatched, new time:', action.payload.time, 'old time:', state.currentTime);
       return { ...state, currentTime: action.payload.time };
 
     case 'TOGGLE_TAG': {
