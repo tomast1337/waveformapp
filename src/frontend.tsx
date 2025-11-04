@@ -12,7 +12,9 @@ import { App } from "./App";
 const elem = document.getElementById("root")!;
 const app = (
   <StrictMode>
+    <main className="flex flex-col items-center justify-center h-screen dark">
     <App />
+    </main>
   </StrictMode>
 );
 
