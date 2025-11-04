@@ -170,6 +170,14 @@ export function WaveformViewer() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Get CSS variables for colors
+    const root = document.documentElement;
+    const bgColor = getComputedStyle(root).getPropertyValue('--background').trim() || 'oklch(0.145 0 0)';
+    const borderColor = getComputedStyle(root).getPropertyValue('--border').trim() || 'oklch(0.922 0 0)';
+    const primaryColor = getComputedStyle(root).getPropertyValue('--primary').trim() || 'oklch(0.205 0 0)';
+    const destructiveColor = getComputedStyle(root).getPropertyValue('--destructive').trim() || 'oklch(0.577 0.245 27.325)';
+    const chart1Color = getComputedStyle(root).getPropertyValue('--chart-1').trim() || 'oklch(0.646 0.222 41.116)';
+
     const { samples, duration } = audioData;
     const dpr = window.devicePixelRatio || 1;
     
@@ -191,12 +199,77 @@ export function WaveformViewer() {
     
     const centerY = displayHeight / 2;
 
-    // Clear canvas
-    ctx.fillStyle = '#1a1a1a';
+    // Convert CSS color (oklch or any format) to rgb for canvas
+    const cssColorToRgb = (cssColor: string): string => {
+      // Remove parentheses if present (for oklch values)
+      const cleanColor = cssColor.trim();
+      
+      // Try to use the color directly first (modern browsers support oklch in canvas)
+      try {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 1;
+        tempCanvas.height = 1;
+        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+        if (tempCtx) {
+          // Try oklch format
+          if (cleanColor.includes('oklch')) {
+            tempCtx.fillStyle = cleanColor;
+          } else {
+            tempCtx.fillStyle = cleanColor;
+          }
+          tempCtx.fillRect(0, 0, 1, 1);
+          const data = tempCtx.getImageData(0, 0, 1, 1).data;
+          return `rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+        }
+      } catch (e) {
+        // Fallback if conversion fails
+      }
+      
+      // Fallback colors based on dark/light mode
+      const isDark = document.documentElement.classList.contains('dark') || 
+                     window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (isDark) {
+        if (cleanColor.includes('background') || cleanColor.includes('0.145') || cleanColor.includes('0.205')) {
+          return '#1a1a1a';
+        }
+        if (cleanColor.includes('border') || cleanColor.includes('0.922')) {
+          return '#404040';
+        }
+        if (cleanColor.includes('primary') || cleanColor.includes('0.922')) {
+          return '#e5e5e5';
+        }
+        if (cleanColor.includes('destructive')) {
+          return '#ef4444';
+        }
+        if (cleanColor.includes('chart')) {
+          return '#22c55e';
+        }
+      } else {
+        if (cleanColor.includes('background')) {
+          return '#ffffff';
+        }
+        if (cleanColor.includes('border') || cleanColor.includes('0.922')) {
+          return '#e5e5e5';
+        }
+        if (cleanColor.includes('primary')) {
+          return '#171717';
+        }
+        if (cleanColor.includes('destructive')) {
+          return '#dc2626';
+        }
+        if (cleanColor.includes('chart')) {
+          return '#16a34a';
+        }
+      }
+      return '#000000';
+    };
+
+    // Clear canvas with background color
+    ctx.fillStyle = cssColorToRgb(bgColor);
     ctx.fillRect(0, 0, displayWidth, displayHeight);
 
-    // Draw center line
-    ctx.strokeStyle = '#666';
+    // Draw center line with border color
+    ctx.strokeStyle = cssColorToRgb(borderColor);
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, centerY);
@@ -231,9 +304,9 @@ export function WaveformViewer() {
       maxValues[i] = max;
     }
 
-    // Draw waveform
-    ctx.strokeStyle = '#4a9eff';
-    ctx.fillStyle = '#4a9eff';
+    // Draw waveform with primary color
+    ctx.strokeStyle = cssColorToRgb(primaryColor);
+    ctx.fillStyle = cssColorToRgb(primaryColor);
     ctx.lineWidth = 1;
 
     for (let i = 0; i < displayWidth; i++) {
@@ -253,7 +326,7 @@ export function WaveformViewer() {
     // Draw playhead (current playback position) - make it thicker for easier dragging
     if (duration > 0) {
       const playheadX = (currentTime / duration) * displayWidth;
-      ctx.strokeStyle = '#ff4444';
+      ctx.strokeStyle = cssColorToRgb(destructiveColor);
       ctx.lineWidth = isDragging ? 3 : 2;
       ctx.beginPath();
       ctx.moveTo(playheadX, 0);
@@ -261,16 +334,16 @@ export function WaveformViewer() {
       ctx.stroke();
       
       // Draw a small circle at top for better visibility
-      ctx.fillStyle = '#ff4444';
+      ctx.fillStyle = cssColorToRgb(destructiveColor);
       ctx.beginPath();
       ctx.arc(playheadX, 8, 6, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Draw start position marker (if set)
+    // Draw start position marker (if set) with chart color
     if (startPosition > 0 && duration > 0) {
       const startX = (startPosition / duration) * displayWidth;
-      ctx.strokeStyle = '#44ff44';
+      ctx.strokeStyle = cssColorToRgb(chart1Color);
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
@@ -725,7 +798,7 @@ export function WaveformViewer() {
   };
 
   return (
-    <div className="h-screen flex flex-col w-full">
+    <div className="h-screen flex flex-col w-full min-w-0">
       <Card className="shrink-0 m-4">
         <CardHeader className="pb-3">
           <CardTitle>Waveform Viewer</CardTitle>
@@ -788,9 +861,10 @@ export function WaveformViewer() {
       {audioData && (
         <div 
           ref={containerRef}
-          className="flex-1 overflow-x-auto overflow-y-hidden"
+          className="flex-1 overflow-x-auto overflow-y-hidden min-w-0"
+          style={{ maxWidth: '100%' }}
         >
-          <div className="border rounded-lg overflow-hidden m-4 inline-block min-w-full">
+          <div className="border rounded-lg overflow-hidden m-4 inline-block">
             <canvas
               ref={canvasRef}
               className="block cursor-pointer"
