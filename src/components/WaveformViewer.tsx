@@ -8,6 +8,7 @@ import { formatTime } from './features/waveform-viewer/utils/time';
 import { calculateCanvasWidth, cssColorToRgb } from './features/waveform-viewer/utils/canvas';
 import { useWaveformReducer } from './features/waveform-viewer/hooks/useWaveformReducer';
 import { useKeyboardShortcuts } from './features/waveform-viewer/hooks/useKeyboardShortcuts';
+import { useAudioService } from './features/waveform-viewer/hooks/useAudioService';
 
 const MINUTES_BASE = 60; // 60 minutes = full width
 
@@ -16,16 +17,24 @@ export function WaveformViewer() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const pausedAtRef = useRef<number>(0);
-  const animationFrameRef = useRef<number | null>(null);
   const wasPlayingBeforeDragRef = useRef(false);
   
   // Destructure state for easier access
   const { audioData, fileName, loading, screenWidth, isPlaying, currentTime, startPosition, isDragging, tags, pendingTagStart } = state;
+
+  // Audio service hook
+  const audioService = useAudioService(state.isPlaying, state.isDragging, {
+    onTimeUpdate: (time) => {
+      dispatch({ type: 'TIME_UPDATE', payload: { time } });
+      drawWaveform();
+    },
+    onEnded: () => {
+      dispatch({ type: 'PAUSE' });
+      if (state.audioData) {
+        dispatch({ type: 'TIME_UPDATE', payload: { time: state.audioData.duration } });
+      }
+    },
+  });
 
 
 
@@ -159,41 +168,28 @@ export function WaveformViewer() {
     }
   }, [state.audioData, state.currentTime, state.startPosition, state.isDragging, calculateCanvasWidthMemo]);
 
-  // Update playhead position (only when not dragging)
+  // Effect to handle play/pause state changes
   useEffect(() => {
-    const updatePlayhead = () => {
-      if (state.isPlaying && !state.isDragging && audioContextRef.current && state.audioData) {
-        // Calculate elapsed time since current play session started
-        const sessionElapsed = audioContextRef.current.currentTime - startTimeRef.current;
-        // Total time is the position when we started this session plus elapsed
-        const totalTime = pausedAtRef.current + sessionElapsed;
-        const newTime = Math.min(totalTime, state.audioData.duration);
-        dispatch({ type: 'TIME_UPDATE', payload: { time: newTime } });
-        drawWaveform();
-        
-        if (newTime < state.audioData.duration) {
-          animationFrameRef.current = requestAnimationFrame(updatePlayhead);
-        } else {
-          // Reached end
-          dispatch({ type: 'PAUSE' });
-          dispatch({ type: 'TIME_UPDATE', payload: { time: state.audioData.duration } });
-        }
-      }
-    };
+    if (!state.audioData) return;
 
+    // Only auto-play/pause when not dragging (manual dragging handles its own playback)
     if (state.isPlaying && !state.isDragging) {
-      animationFrameRef.current = requestAnimationFrame(updatePlayhead);
-    } else if (animationFrameRef.current !== null) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+      // Initialize audio if needed, then play
+      audioService.initialize(state.audioData.audioBuffer)
+        .then(() => {
+          // Only play if still in playing state (state might have changed during async init)
+          if (state.isPlaying && !state.isDragging) {
+            audioService.play(state.audioData!, state.startPosition);
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to initialize audio:', error);
+        });
+    } else if (!state.isPlaying) {
+      audioService.pause();
     }
-
-    return () => {
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [state.isPlaying, state.isDragging, state.audioData, drawWaveform, dispatch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.isPlaying, state.isDragging, state.audioData, state.startPosition]);
 
   useEffect(() => {
     if (state.audioData) {
@@ -213,86 +209,21 @@ export function WaveformViewer() {
     return () => window.removeEventListener('resize', handleResize);
   }, [state.audioData, drawWaveform, dispatch]);
 
-  // Cleanup audio on unmount
-  useEffect(() => {
-    return () => {
-      if (sourceNodeRef.current) {
-        try {
-          sourceNodeRef.current.stop();
-        } catch (e) {
-          // Ignore if already stopped
-        }
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-      }
-    };
-  }, []);
 
-  const initializeAudio = async (arrayBuffer: ArrayBuffer) => {
-    try {
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        await audioContextRef.current.close();
-      }
-      
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-      
-      audioContextRef.current = audioContext;
-      audioBufferRef.current = audioBuffer;
-    } catch (error) {
-      console.error('Failed to initialize audio:', error);
-      alert('Failed to initialize audio playback');
-    }
-  };
 
-  const handlePlayPause = async () => {
-    if (!state.audioData || !audioBufferRef.current) return;
-
-    if (!audioContextRef.current) {
-      await initializeAudio(state.audioData.audioBuffer);
-    }
-
-    const audioContext = audioContextRef.current;
-    if (!audioContext || !audioBufferRef.current) return;
+  const handlePlayPause = () => {
+    if (!state.audioData) return;
 
     if (state.isPlaying) {
       // Pause and reset to start position
-      if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current = null;
-      }
       dispatch({ type: 'PAUSE' });
       dispatch({ type: 'SEEK', payload: { time: state.startPosition } });
-      pausedAtRef.current = state.startPosition;
       drawWaveform();
     } else {
-      // Play from start position (reset and play)
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBufferRef.current;
-      source.connect(audioContext.destination);
-
-      const startOffset = Math.max(0, state.startPosition);
-      const remainingDuration = state.audioData.duration - startOffset;
-      
-      if (remainingDuration > 0) {
-        source.start(0, startOffset);
-        startTimeRef.current = audioContext.currentTime;
-        pausedAtRef.current = state.startPosition;
-        
-        sourceNodeRef.current = source;
-
-        source.onended = () => {
-          dispatch({ type: 'PAUSE' });
-          dispatch({ type: 'TIME_UPDATE', payload: { time: state.audioData!.duration } });
-          pausedAtRef.current = state.audioData!.duration;
-          sourceNodeRef.current = null;
-        };
-
-        dispatch({ type: 'PLAY' });
-        dispatch({ type: 'SEEK', payload: { time: state.startPosition } });
-        drawWaveform();
-      }
+      // Play from start position (the effect will handle initialization and playback)
+      dispatch({ type: 'PLAY' });
+      dispatch({ type: 'SEEK', payload: { time: state.startPosition } });
+      drawWaveform();
     }
   };
 
@@ -306,11 +237,11 @@ export function WaveformViewer() {
       if (!state.audioData) return;
       dispatch({ type: 'TOGGLE_TAG', payload: { currentTime: state.currentTime } });
     },
-    Space: async () => {
-      await handlePlayPause();
+    Space: () => {
+      handlePlayPause();
     },
-    ' ': async () => {
-      await handlePlayPause();
+    ' ': () => {
+      handlePlayPause();
     },
   });
 
@@ -339,10 +270,8 @@ export function WaveformViewer() {
 
     const wasPlaying = state.isPlaying && !pauseAudio;
     
-    if (state.isPlaying && sourceNodeRef.current && audioContextRef.current) {
-      // Stop current playback
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current = null;
+    if (state.isPlaying) {
+      audioService.pause();
     }
 
     if (pauseAudio) {
@@ -350,34 +279,15 @@ export function WaveformViewer() {
     }
 
     dispatch({ type: 'SEEK', payload: { time } });
-    pausedAtRef.current = time;
+    audioService.seek(time);
 
     // If it was playing and not pausing, continue from new position
-    if (wasPlaying && audioContextRef.current && audioBufferRef.current) {
-      const audioContext = audioContextRef.current;
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBufferRef.current;
-      source.connect(audioContext.destination);
-      
-      const remainingDuration = state.audioData.duration - time;
-      if (remainingDuration > 0) {
-        source.start(0, time);
-        startTimeRef.current = audioContext.currentTime;
-        sourceNodeRef.current = source;
-
-        source.onended = () => {
-          dispatch({ type: 'PAUSE' });
-          dispatch({ type: 'TIME_UPDATE', payload: { time: state.audioData!.duration } });
-          pausedAtRef.current = state.audioData!.duration;
-          sourceNodeRef.current = null;
-        };
-      } else {
-        dispatch({ type: 'PAUSE' });
-      }
+    if (wasPlaying) {
+      dispatch({ type: 'PLAY' });
     }
 
     drawWaveform();
-  }, [state.audioData, state.isPlaying, drawWaveform, dispatch]);
+  }, [state.audioData, state.isPlaying, drawWaveform, dispatch, audioService]);
 
   const handleCanvasMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!state.audioData || !canvasRef.current) return;
@@ -391,12 +301,8 @@ export function WaveformViewer() {
       wasPlayingBeforeDragRef.current = state.isPlaying;
       
       // Pause audio when starting to drag
-      if (state.isPlaying && sourceNodeRef.current && audioContextRef.current) {
-        const audioContext = audioContextRef.current;
-        const sessionElapsed = audioContext.currentTime - startTimeRef.current;
-        pausedAtRef.current = pausedAtRef.current + sessionElapsed;
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current = null;
+      if (state.isPlaying) {
+        audioService.pause();
         dispatch({ type: 'PAUSE' });
       }
     } else {
@@ -416,7 +322,7 @@ export function WaveformViewer() {
     if (!state.isDragging) return;
 
     const time = getTimeFromX(event.clientX);
-    pausedAtRef.current = time;
+    audioService.seek(time);
     dispatch({ type: 'DRAG_END' });
     
     // Don't auto-resume - user needs to click play
@@ -442,12 +348,8 @@ export function WaveformViewer() {
       dispatch({ type: 'DRAG_START' });
       wasPlayingBeforeDragRef.current = state.isPlaying;
       
-      if (state.isPlaying && sourceNodeRef.current && audioContextRef.current) {
-        const audioContext = audioContextRef.current;
-        const sessionElapsed = audioContext.currentTime - startTimeRef.current;
-        pausedAtRef.current = pausedAtRef.current + sessionElapsed;
-        sourceNodeRef.current.stop();
-        sourceNodeRef.current = null;
+      if (state.isPlaying) {
+        audioService.pause();
         dispatch({ type: 'PAUSE' });
       }
       
@@ -466,7 +368,7 @@ export function WaveformViewer() {
 
     const time = getTimeFromX(touch.clientX);
     dispatch({ type: 'DRAG_MOVE', payload: { time } });
-    pausedAtRef.current = time;
+    audioService.seek(time);
     drawWaveform();
     event.preventDefault();
   };
@@ -484,15 +386,15 @@ export function WaveformViewer() {
       if (state.isDragging && state.audioData && canvasRef.current) {
         const time = getTimeFromX(event.clientX);
         dispatch({ type: 'DRAG_MOVE', payload: { time } });
-        pausedAtRef.current = time;
+        audioService.seek(time);
         drawWaveform();
       }
     };
 
     const handleGlobalMouseUp = (event: MouseEvent) => {
       if (state.isDragging) {
-        const time = state.audioData && canvasRef.current ? getTimeFromX(event.clientX) : pausedAtRef.current;
-        pausedAtRef.current = time;
+        const time = state.audioData && canvasRef.current ? getTimeFromX(event.clientX) : state.currentTime;
+        audioService.seek(time);
         dispatch({ type: 'DRAG_END' });
         if (state.audioData) {
           drawWaveform();
@@ -524,11 +426,8 @@ export function WaveformViewer() {
     dispatch({ type: 'FILE_LOAD_START' });
     try {
       const data = await parseWavFile(file);
-      pausedAtRef.current = 0;
       
-      // Initialize audio for playback
-      await initializeAudio(data.audioBuffer);
-      
+      // Initialize audio for playback (will be done when play is clicked)
       dispatch({ type: 'FILE_LOAD_SUCCESS', payload: { audioData: data, fileName: file.name } });
     } catch (error) {
       console.error('Error parsing WAV file:', error);
@@ -576,7 +475,7 @@ export function WaveformViewer() {
               <div className="flex items-center gap-4">
                 <Button 
                   onClick={handlePlayPause} 
-                  disabled={!audioBufferRef.current}
+                  disabled={!audioData}
                   size="lg"
                 >
                   {isPlaying ? <Pause className="size-4" /> : <Play className="size-4" />}

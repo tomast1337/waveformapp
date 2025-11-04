@@ -16,6 +16,7 @@ export interface AudioService {
 
 export function useAudioService(
   isPlaying: boolean,
+  isDragging: boolean,
   callbacks: AudioServiceCallbacks
 ): AudioService {
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -25,10 +26,23 @@ export function useAudioService(
   const pausedAtRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
   const currentAudioDataRef = useRef<AudioData | null>(null);
+  const isInitializedRef = useRef<boolean>(false);
+  const isPlayingRef = useRef<boolean>(false);
+  const isDraggingRef = useRef<boolean>(false);
 
   const initialize = useCallback(async (arrayBuffer: ArrayBuffer) => {
     try {
+      // Always reinitialize to ensure we have the latest buffer
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        // Stop any playing source
+        if (sourceNodeRef.current) {
+          try {
+            sourceNodeRef.current.stop();
+          } catch (e) {
+            // Ignore
+          }
+          sourceNodeRef.current = null;
+        }
         await audioContextRef.current.close();
       }
       
@@ -37,14 +51,26 @@ export function useAudioService(
       
       audioContextRef.current = audioContext;
       audioBufferRef.current = audioBuffer;
+      isInitializedRef.current = true;
     } catch (error) {
       console.error('Failed to initialize audio:', error);
+      isInitializedRef.current = false;
       throw new Error('Failed to initialize audio playback');
     }
   }, []);
 
   const play = useCallback((audioData: AudioData, startTime: number) => {
     if (!audioContextRef.current || !audioBufferRef.current) return;
+
+    // Stop any existing playback first
+    if (sourceNodeRef.current) {
+      try {
+        sourceNodeRef.current.stop();
+      } catch (e) {
+        // Ignore if already stopped
+      }
+      sourceNodeRef.current = null;
+    }
 
     const audioContext = audioContextRef.current;
     const source = audioContext.createBufferSource();
@@ -105,37 +131,58 @@ export function useAudioService(
     }
   }, []);
 
-  // Update playhead position (only when playing)
+  // Update refs when props change
   useEffect(() => {
-    const updatePlayhead = () => {
-      if (isPlaying && audioContextRef.current && currentAudioDataRef.current) {
-        const sessionElapsed = audioContextRef.current.currentTime - startTimeRef.current;
-        const totalTime = pausedAtRef.current + sessionElapsed;
-        const newTime = Math.min(totalTime, currentAudioDataRef.current.duration);
-        callbacks.onTimeUpdate(newTime);
-        
-        if (newTime < currentAudioDataRef.current.duration) {
-          animationFrameRef.current = requestAnimationFrame(updatePlayhead);
-        } else {
-          // Reached end
-          callbacks.onEnded();
-        }
-      }
-    };
+    isPlayingRef.current = isPlaying;
+    isDraggingRef.current = isDragging;
+  }, [isPlaying, isDragging]);
 
-    if (isPlaying) {
-      animationFrameRef.current = requestAnimationFrame(updatePlayhead);
-    } else if (animationFrameRef.current !== null) {
+  // Update playhead position (only when playing and not dragging)
+  useEffect(() => {
+    // Cancel any existing animation frame
+    if (animationFrameRef.current !== null) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
 
+    if (!isPlaying || isDragging || !audioContextRef.current || !currentAudioDataRef.current) {
+      return;
+    }
+
+    const updatePlayhead = () => {
+      // Check conditions using refs (which are always up-to-date)
+      if (!isPlayingRef.current || isDraggingRef.current || !audioContextRef.current || !currentAudioDataRef.current || !sourceNodeRef.current) {
+        if (animationFrameRef.current !== null) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        return;
+      }
+
+      const sessionElapsed = audioContextRef.current.currentTime - startTimeRef.current;
+      const totalTime = pausedAtRef.current + sessionElapsed;
+      const newTime = Math.min(totalTime, currentAudioDataRef.current.duration);
+      callbacks.onTimeUpdate(newTime);
+      
+      if (newTime < currentAudioDataRef.current.duration) {
+        animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+      } else {
+        // Reached end
+        animationFrameRef.current = null;
+        callbacks.onEnded();
+      }
+    };
+
+    // Start the animation loop
+    animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+
     return () => {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
-  }, [isPlaying, callbacks]);
+  }, [isPlaying, isDragging, callbacks]);
 
   // Cleanup on unmount
   useEffect(() => {
