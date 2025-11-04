@@ -33,6 +33,8 @@ export function WaveformViewer() {
   const [startPosition, setStartPosition] = useState(0); // Position set by clicking
   const [isDragging, setIsDragging] = useState(false);
   const wasPlayingBeforeDragRef = useRef(false);
+  const [tags, setTags] = useState<Array<[number, number]>>([]); // Array of [start, end] pairs
+  const [pendingTagStart, setPendingTagStart] = useState<number | null>(null);
 
   const parseWavFile = async (file: File): Promise<AudioData> => {
     const arrayBuffer = await file.arrayBuffer();
@@ -494,7 +496,7 @@ export function WaveformViewer() {
     }
   };
 
-  // Keyboard shortcut for spacebar to control play/pause
+  // Keyboard shortcuts for spacebar (play/pause) and 'A' key (tagging)
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       // Don't trigger if user is typing in an input field
@@ -503,6 +505,31 @@ export function WaveformViewer() {
         event.target instanceof HTMLTextAreaElement ||
         (event.target as HTMLElement)?.isContentEditable
       ) {
+        return;
+      }
+
+      // 'A' key for tagging
+      if (event.code === 'KeyA' || event.key === 'a' || event.key === 'A') {
+        event.preventDefault();
+        if (!audioData) return;
+
+        if (pendingTagStart === null) {
+          // Start a new tag at current time
+          setPendingTagStart(currentTime);
+        } else {
+          // Complete the tag
+          const startTime = pendingTagStart;
+          const endTime = currentTime;
+          
+          // Only add tag if end time is after start time
+          if (endTime > startTime) {
+            setTags(prev => [...prev, [startTime, endTime]]);
+            setPendingTagStart(null);
+          } else {
+            // If end is before start, reset
+            setPendingTagStart(null);
+          }
+        }
         return;
       }
 
@@ -561,7 +588,7 @@ export function WaveformViewer() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [audioData, isPlaying, startPosition, drawWaveform]);
+  }, [audioData, isPlaying, startPosition, drawWaveform, currentTime, pendingTagStart]);
 
   const getTimeFromX = useCallback((clientX: number): number => {
     if (!audioData || !canvasRef.current) return 0;
@@ -779,6 +806,8 @@ export function WaveformViewer() {
       setStartPosition(0);
       pausedAtRef.current = 0;
       setIsPlaying(false);
+      setTags([]); // Clear tags when loading new file
+      setPendingTagStart(null); // Clear pending tag
       
       // Initialize audio for playback
       await initializeAudio(data.audioBuffer);
@@ -893,9 +922,61 @@ export function WaveformViewer() {
         </div>
       )}
 
-      {
-        // The list will go here !!!
-      }
+      {/* Tags list section */}
+      {(tags.length > 0 || pendingTagStart !== null) && (
+        <div className="shrink-0 border-t border-border bg-card p-4 max-h-64 overflow-y-auto">
+          <div className="container mx-auto">
+            <h3 className="text-sm font-semibold text-card-foreground mb-3">
+              Tags {pendingTagStart !== null && <span className="text-muted-foreground text-xs">(Press A again to set end)</span>}
+            </h3>
+            <div className="space-y-2">
+              {tags.map((tag, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-2 bg-background rounded-md border border-border"
+                >
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="font-mono text-card-foreground">
+                      {formatTime(tag[0])} - {formatTime(tag[1])}
+                    </span>
+                    <span className="text-muted-foreground text-xs">
+                      ({formatTime(tag[1] - tag[0])})
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setTags(prev => prev.filter((_, i) => i !== index));
+                    }}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    ×
+                  </Button>
+                </div>
+              ))}
+              {pendingTagStart !== null && (
+                <div className="flex items-center justify-between p-2 bg-primary/10 rounded-md border border-primary/30">
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="font-mono text-card-foreground">
+                      {formatTime(pendingTagStart)} - ...
+                    </span>
+                    <span className="text-primary text-xs">(Pending end time)</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPendingTagStart(null)}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    ×
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="shrink-0 rounded-md p-2 bg-card text-card-foreground">
         <div className="flex flex-col items-center gap-2 mx-auto">
