@@ -1,85 +1,79 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.3/schema.json",
-  "assist": {
-    "enabled": true,
-    "actions": {
-      "recommended": true
-    }
-  },
-  "vcs": {
-    "enabled": true,
-    "clientKind": "git",
-    "useIgnoreFile": true
-  },
-  "files": {
-    "ignoreUnknown": false
-  },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 4,
-    "lineWidth": 320,
-    "lineEnding": "lf"
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true,
-      "a11y": {
-        "recommended": true
-      },
-      "complexity": {
-        "recommended": true
-      },
-      "correctness": {
-        "recommended": true
-      },
-      "performance": {
-        "recommended": true
-      },
-      "security": {
-        "recommended": true
-      },
-      "style": {
-        "recommended": true,
-        "useImportType": {
-          "level": "warn",
-          "options":{
-            "style": "auto"
-          }
+    "$schema": "https://biomejs.dev/schemas/2.3.3/schema.json",
+    "assist": {
+        "enabled": true,
+        "actions": {
+            "recommended": true
         }
-      },
-      "suspicious": {
-        "recommended": true
-      },
-      "nursery": {
-        "useSortedClasses": {
-          "level": "warn",
-          "options": {
-            "functions": [
-              "clsx",
-              "cn",
-              "cva",
-              "tw",
-              "tw.*"
-            ]
-          }
-        }
-      }
-    }
-  },
-  "javascript": {
+    },
+    "vcs": {
+        "enabled": true,
+        "clientKind": "git",
+        "useIgnoreFile": true
+    },
+    "files": {
+        "ignoreUnknown": false
+    },
     "formatter": {
-      "quoteStyle": "double",
-      "jsxQuoteStyle": "double",
-      "trailingCommas": "es5",
-      "semicolons": "always",
-      "arrowParentheses": "always"
+        "enabled": true,
+        "indentStyle": "space",
+        "indentWidth": 4,
+        "lineWidth": 320,
+        "lineEnding": "lf"
+    },
+    "linter": {
+        "enabled": true,
+        "rules": {
+            "recommended": true,
+            "a11y": {
+                "recommended": true
+            },
+            "complexity": {
+                "recommended": true
+            },
+            "correctness": {
+                "recommended": true
+            },
+            "performance": {
+                "recommended": true
+            },
+            "security": {
+                "recommended": true
+            },
+            "style": {
+                "recommended": true,
+                "useImportType": {
+                    "level": "warn",
+                    "options": {
+                        "style": "auto"
+                    }
+                }
+            },
+            "suspicious": {
+                "recommended": true
+            },
+            "nursery": {
+                "useSortedClasses": {
+                    "level": "warn",
+                    "options": {
+                        "functions": ["clsx", "cn", "cva", "tw", "tw.*"]
+                    }
+                }
+            }
+        }
+    },
+    "javascript": {
+        "formatter": {
+            "quoteStyle": "double",
+            "jsxQuoteStyle": "double",
+            "trailingCommas": "es5",
+            "semicolons": "always",
+            "arrowParentheses": "always"
+        }
+    },
+    "css": {
+        "parser": {
+            "tailwindDirectives": true
+        }
     }
-  },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
-  }
 }

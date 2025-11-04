@@ -1,39 +1,41 @@
 @import "../styles/globals.css";
 
 @layer base {
-  :root {
-    @apply font-sans;
-  }
+    :root {
+        @apply font-sans;
+    }
 
-  html {
-    background-color: var(--background);
-  }
+    html {
+        background-color: var(--background);
+    }
 
-  body {
-    @apply min-w-[320px] h-screen relative m-0 p-0 bg-background text-foreground;
-    overflow-x: hidden !important;
-    overflow-y: hidden;
-    background-color: var(--background);
-    width: 100vw;
-    max-width: 100vw;
-  }
-  
-  #root {
-    @apply h-full w-full;
-    background-color: var(--background);
-    max-width: 100vw;
-    width: 100vw;
-    overflow: hidden;
-  }
-  
-  /* Ensure no horizontal scrolling on the page */
-  html {
-    overflow-x: hidden !important;
-    max-width: 100vw;
-    width: 100%;
-  }
-  
-  * {
-    box-sizing: border-box;
-  }
+    body {
+        @apply min-w-[320px] h-screen relative m-0 p-0 bg-background text-foreground;
+        /* biome-ignore lint/complexity/noImportantStyles: <Its important to hide the horizontal scrolling> */
+        overflow-x: hidden !important;
+        overflow-y: hidden;
+        background-color: var(--background);
+        width: 100vw;
+        max-width: 100vw;
+    }
+
+    #root {
+        @apply h-full w-full;
+        background-color: var(--background);
+        max-width: 100vw;
+        width: 100vw;
+        overflow: hidden;
+    }
+
+    /* Ensure no horizontal scrolling on the page */
+    html {
+        /* biome-ignore lint/complexity/noImportantStyles: <Its important to hide the horizontal scrolling> */
+        overflow-x: hidden !important;
+        max-width: 100vw;
+        width: 100%;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
 }
